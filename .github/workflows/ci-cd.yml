@@ -1,0 +1,134 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# un seul déploiement à la fois, sans annuler celui en cours
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build, test, push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.vars.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image name
+        id: vars
+        # ghcr.io exige un nom en minuscules
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      # le VPS Oracle Always Free est en ARM : on construit aussi pour arm64
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: portfolio:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        run: |
+          docker run -d --name site -p 8080:8080 --read-only --tmpfs /tmp --cap-drop ALL portfolio:test
+          for i in $(seq 1 20); do
+            curl -fsS http://localhost:8080/healthz && break
+            sleep 1
+          done
+          curl -fsS http://localhost:8080/ -o index.html
+          grep -q "Igor Belyaev" index.html
+          curl -fsS -o /dev/null http://localhost:8080/css/style.css
+          curl -fsS -o /dev/null http://localhost:8080/js/main.js
+          curl -fsSI http://localhost:8080/ -o headers.txt
+          grep -qi "content-security-policy" headers.txt
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/nope)" = 404
+
+      - name: Container logs
+        if: failure()
+        run: docker logs site
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.vars.outputs.image }}:${{ github.sha }}
+            ${{ steps.vars.outputs.image }}:latest
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha
+
+  deploy:
+    name: Deploy to VPS
+    needs: build
+    # ignoré tant que la variable VPS_HOST n'est pas configurée dans le dépôt
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.VPS_HOST != ''
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy compose files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ vars.VPS_HOST }}
+          username: ${{ vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: deploy/docker-compose.yml,deploy/Caddyfile
+          target: portfolio
+          strip_components: 1
+
+      - name: Pull and restart containers
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          IMAGE: ${{ needs.build.outputs.image }}:${{ github.sha }}
+          SITE_ADDRESS: ${{ vars.SITE_ADDRESS || ':80' }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ vars.VPS_HOST }}
+          username: ${{ vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: IMAGE,SITE_ADDRESS,GHCR_USER,GHCR_TOKEN
+          script: |
+            set -e
+            cd ~/portfolio
+            printf 'IMAGE=%s\nSITE_ADDRESS=%s\n' "$IMAGE" "$SITE_ADDRESS" > .env
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker logout ghcr.io
+            docker image prune -f
+
+      - name: Check the site is up
+        run: curl -fsSL --retry 10 --retry-delay 3 --retry-all-errors "${{ vars.SITE_URL || format('http://{0}', vars.VPS_HOST) }}/healthz"

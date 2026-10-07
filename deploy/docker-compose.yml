@@ -1,0 +1,34 @@
+# Lancé sur le VPS par le pipeline. Les variables IMAGE et SITE_ADDRESS
+# sont écrites dans .env (à côté de ce fichier) à chaque déploiement.
+services:
+  site:
+    image: ${IMAGE:?IMAGE doit être défini dans .env}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - site
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      # ":80" tant qu'il n'y a pas de domaine ; avec un domaine, Caddy obtient le certificat HTTPS tout seul
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
