@@ -1,6 +1,8 @@
 # Портфолио
 
-Сайт-резюме: HTML, CSS и JavaScript без сборки, nginx в Docker, CI/CD через GitHub Actions, деплой на VPS.
+Сайт-резюме: HTML, CSS и JavaScript без сборки, nginx в Docker, CI/CD через GitHub Actions.
+
+Сайт опубликован на GitHub Pages: https://rogirouge.github.io/portfolio/ (каждый push в `main` публикует его заново). Деплой Docker-образа на свой VPS описан ниже и пока не настроен.
 
 ```
 git push → GitHub Actions ─┬─ сборка образа

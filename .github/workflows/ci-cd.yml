@@ -28,9 +28,7 @@ jobs:
 
       - name: Stamp version
         # la page affiche le commit et la date de la version publiée
-        run: |
-          sed -i "s|commits/main\" data-version>copie locale<|commit/${GITHUB_SHA}\" data-version>commit ${GITHUB_SHA::7} du $(date -u +%d.%m.%Y)<|" site/index.html
-          grep -q "commit ${GITHUB_SHA::7} du" site/index.html
+        run: .github/stamp-version.sh
 
       - name: Image name
         id: vars
@@ -90,6 +88,35 @@ jobs:
             ${{ steps.vars.outputs.image }}:latest
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha
+
+  # le site statique est publié sur GitHub Pages (https://rogirouge.github.io/portfolio/)
+  pages:
+    name: Publish to GitHub Pages
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stamp version
+        run: .github/stamp-version.sh
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
 
   deploy:
     name: Deploy to VPS
