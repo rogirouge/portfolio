@@ -13,7 +13,7 @@ git push → GitHub Actions ─┬─ сборка образа
 
 ## Структура
 
-- `site/` — сам сайт. Текст в `site/index.html`, стили в `site/css/style.css`, скрипт в `site/js/main.js`.
+- `site/` — сам сайт. Текст в `site/index.html`, стили в `site/css/style.css`, скрипты в `site/js/`. Пайплайн перед сборкой вписывает в страницу хеш коммита и дату.
 - `nginx/default.conf` — конфиг nginx: кэш, gzip, заголовки безопасности, `/healthz`.
 - `Dockerfile` — образ на `nginx-unprivileged` (nginx работает не от root).
 - `deploy/` — `docker-compose.yml` и `Caddyfile` для сервера; пайплайн копирует их на VPS.

@@ -26,6 +26,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Stamp version
+        # la page affiche le commit et la date de la version publiée
+        run: |
+          sed -i "s|commits/main\" data-version>copie locale<|commit/${GITHUB_SHA}\" data-version>commit ${GITHUB_SHA::7} du $(date -u +%d.%m.%Y)<|" site/index.html
+          grep -q "commit ${GITHUB_SHA::7} du" site/index.html
+
       - name: Image name
         id: vars
         # ghcr.io exige un nom en minuscules

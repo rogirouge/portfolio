@@ -1,12 +1,25 @@
 (function () {
+  'use strict';
+
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var finePointer = window.matchMedia('(hover: hover)').matches;
-  var mouse = { x: 0, y: 0, nx: 0, ny: 0 };
+  var narrowQuery = window.matchMedia('(max-width: 760px)');
+
+  function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function smoothstep(a, b, v) { var t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+  function gutter() { return clamp(window.innerWidth * 0.024, 16, 32); }
+  function docTop(el) { return el.getBoundingClientRect().top + window.scrollY; }
+
+  // Positions mesurées une fois par mise en page (chargement, polices, redimensionnement).
+  // Pendant l'animation on ne relit rien dans la page : seulement window.scrollY.
+  var geo = { W: 0, H: 0, heroTop: 0, heroTotal: 1, heroBottom: 0, pinTop: 0, pinTotal: 1, giantTops: [] };
+
+  var mouse = { x: -100, y: -100, nx: 0, ny: 0 };
+  var soft = { x: -100, y: -100, nx: 0, ny: 0 };
 
   // ---------- Point qui suit la souris ----------
 
   var dot = document.querySelector('.dot');
-  var dotPos = { x: -100, y: -100 };
 
   window.addEventListener('mousemove', function (e) {
     mouse.x = e.clientX;
@@ -14,135 +27,282 @@
     mouse.nx = e.clientX / window.innerWidth - 0.5;
     mouse.ny = e.clientY / window.innerHeight - 0.5;
     dot.classList.add('on');
+    kick();
   });
   document.addEventListener('mouseleave', function () { dot.classList.remove('on'); });
   document.addEventListener('mouseover', function (e) {
-    dot.classList.toggle('big', !!e.target.closest('a, button, .card, .cf-item'));
+    dot.classList.toggle('big', !!e.target.closest('a, button, .cf-item'));
   });
 
-  // ---------- Couverture : lignes de perspective ----------
+  // ---------- Menu ----------
 
-  var cover = document.querySelector('.cover');
-  var svg = document.querySelector('.lines');
-  var card = document.querySelector('.card');
-  var tilt = { x: 0, y: 0 };
+  var menuButton = document.querySelector('.menu-button');
+  var menu = document.getElementById('menu');
+  menu.inert = true;
 
-  function line(x1, y1, x2, y2) { return 'M' + x1.toFixed(1) + ' ' + y1.toFixed(1) + 'L' + x2.toFixed(1) + ' ' + y2.toFixed(1); }
+  function setMenu(open) {
+    document.body.classList.toggle('menu-open', open);
+    menuButton.setAttribute('aria-expanded', String(open));
+    menuButton.textContent = open ? 'Fermer' : 'Menu';
+    menu.inert = !open;
+    if (open) menu.querySelector('a').focus({ preventScroll: true });
+  }
+  menuButton.addEventListener('click', function () { setMenu(!document.body.classList.contains('menu-open')); });
+  menu.addEventListener('click', function (e) { if (e.target.closest('a')) setMenu(false); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setMenu(false); });
 
-  function drawLines() {
-    var w = cover.clientWidth;
-    var h = cover.clientHeight;
-    var cx = w / 2 + tilt.x * 40;
-    var cy = h / 2 + tilt.y * 30;
-    var s = card.offsetHeight * 0.72;   // côté du carré autour de la photo
-    var a = s / 2;
-    var b = s * 0.3;                    // profondeur du cube
+  // ---------- Couverture : le couloir ----------
+  // Un couloir de cadres carrés mène à la photo. Il y a autant de cadres que de « serveurs » :
+  // plus la fenêtre est large, plus il y en a. En faisant défiler, la caméra avance dans le couloir,
+  // les cadres passent de chaque côté et la photo s'ouvre jusqu'à remplir l'écran.
+
+  var hero = document.querySelector('.hero');
+  var stage = hero.querySelector('.hero-stage');
+  var card = hero.querySelector('.hero-card');
+  var svg = hero.querySelector('.hero-lines');
+  var w1 = hero.querySelector('.w1');
+  var w2 = hero.querySelector('.w2');
+  var role = hero.querySelector('.hero-role');
+  var fading = hero.querySelectorAll('.hero-role, .hero-corner');
+  var base = { cw: 0, ch: 0, gap: 0 };
+  var servers = 1;
+  var C_END = 0.9; // jusqu'où avance la caméra (la photo est à la profondeur 1)
+  var lastHero = '';
+
+  svg.innerHTML = '<path/>';
+  var heroPath = svg.firstChild;
+
+  function serverCount(w) {
+    return w < 640 ? 1 : w < 900 ? 2 : w < 1150 ? 3 : w < 1400 ? 4 : w < 1700 ? 5 : 6;
+  }
+
+  function measureHero() {
+    card.style.width = '';
+    card.style.height = '';
+    base.cw = card.offsetWidth;
+    base.ch = card.offsetHeight;
+    base.gap = clamp(window.innerWidth * 0.016, 14, 28);
+
+    // le nom prend toute la place disponible à côté (ou au-dessus) de la photo
+    var root = document.documentElement;
+    root.style.setProperty('--name', '100px');
+    var probe = w2.firstElementChild.getBoundingClientRect().width;
+    var avail = narrowQuery.matches
+      ? window.innerWidth - 2 * gutter()
+      : window.innerWidth / 2 - base.cw / 2 - base.gap - gutter();
+    root.style.setProperty('--name', clamp(96 * avail / probe, 28, 150).toFixed(1) + 'px');
+
+    servers = serverCount(window.innerWidth);
+    document.getElementById('vw').textContent = window.innerWidth.toLocaleString('fr-FR');
+    document.getElementById('servers').textContent = servers + (servers > 1 ? ' serveurs' : ' serveur');
+    lastHero = '';
+  }
+
+  function drawHero(y) {
+    var W = geo.W;
+    var H = geo.H;
+    var p = reduce ? 0 : clamp((y - geo.heroTop) / geo.heroTotal, 0, 1);
+    var camX = soft.nx * 46;
+    var camY = soft.ny * 30;
+
+    // rien n'a bougé depuis la dernière image : on ne redessine pas
+    var key = p.toFixed(4) + ' ' + camX.toFixed(2) + ' ' + camY.toFixed(2);
+    if (key === lastHero) return;
+    lastHero = key;
+
+    var cx = W / 2;
+    var cy = H / 2;
+    var c = p * C_END;
+    var k = (1 / (1 - c) - 1) / (1 / (1 - C_END) - 1); // 0 → 1, s'accélère comme en perspective
+
+    function px(x, z) { return cx + (x - camX) / (z - c); }
+    function py(v, z) { return cy + (v - camY) / (z - c); }
+
+    // la photo, au bout du couloir : elle s'ouvre jusqu'à remplir l'écran
+    var cw = lerp(base.cw, W, k);
+    var ch = lerp(base.ch, H, k);
+    var ox = -camX * (1 - k);
+    var oy = -camY * (1 - k);
+    card.style.width = cw.toFixed(1) + 'px';
+    card.style.height = ch.toFixed(1) + 'px';
+    card.style.transform = 'translate(-50%, -50%) translate(' + ox.toFixed(1) + 'px,' + oy.toFixed(1) + 'px)';
+
+    // le nom s'écarte, comme deux portes
+    var push = (cw - base.cw) / 2 + k * W * 0.3;
+    var pushY = (ch - base.ch) / 2 + k * H * 0.3;
+    var nameAlpha = String(1 - smoothstep(0.08, 0.5, k));
+    if (narrowQuery.matches) {
+      w1.style.transform = 'translate(0, calc(-100% - ' + pushY.toFixed(1) + 'px))';
+      w2.style.transform = 'translate(0, ' + pushY.toFixed(1) + 'px)';
+    } else {
+      w1.style.transform = 'translate(' + (-push + ox).toFixed(1) + 'px, -50%)';
+      w2.style.transform = 'translate(' + (push + ox).toFixed(1) + 'px, -50%)';
+    }
+    w1.style.opacity = nameAlpha;
+    w2.style.opacity = nameAlpha;
+    // la ligne sous la photo descend avec son bord et s'efface vite : elle ne passe jamais sur la photo
+    var roleY = (narrowQuery.matches ? pushY : (ch - base.ch) / 2) + oy;
+    role.style.transform = 'translate(-50%, ' + roleY.toFixed(1) + 'px)';
+    var restAlpha = String(1 - smoothstep(0, 0.12, k));
+    fading.forEach(function (el) { el.style.opacity = restAlpha; });
+
+    // les lignes (elles passent sous la photo et sous les textes, qui ont un fond)
     var d = [];
+    function seg(x1, y1, x2, y2) { d.push('M' + x1.toFixed(1) + ' ' + y1.toFixed(1) + 'L' + x2.toFixed(1) + ' ' + y2.toFixed(1)); }
+    function rect(x1, y1, x2, y2) { seg(x1, y1, x2, y1); seg(x2, y1, x2, y2); seg(x2, y2, x1, y2); seg(x1, y2, x1, y1); }
 
-    d.push(line(0, cy, w, cy), line(cx, 0, cx, h));
-    // carré de face et carré du fond
-    d.push('M' + (cx - a) + ' ' + (cy - a) + 'h' + s + 'v' + s + 'h' + -s + 'Z');
-    d.push('M' + (cx - a + b) + ' ' + (cy - a - b) + 'h' + s + 'v' + s + 'h' + -s + 'Z');
-    d.push(line(cx - a, cy - a, cx - a + b, cy - a - b), line(cx + a, cy - a, cx + a + b, cy - a - b),
-           line(cx + a, cy + a, cx + a + b, cy + a - b), line(cx - a, cy + a, cx - a + b, cy + a - b));
+    // horizon et axe vertical
+    seg(0, cy, W, cy);
+    seg(cx, 0, cx, H);
+
+    // les cadres du couloir, du plus proche de la photo au plus proche de nous
+    var A = base.ch * 0.4 * 0.935;
+    var corners = null;
+    for (var j = 0; j < servers; j++) {
+      var z = 1 - 0.085 * (j + 1);
+      if (z - c < 0.03) break;
+      var x1 = px(-A, z), x2 = px(A, z), y1 = py(-A, z), y2 = py(A, z);
+      if (x2 - x1 > W * 3) break;
+      rect(x1, y1, x2, y2);
+      if (corners) {
+        seg(corners[0], corners[1], x1, y1); seg(corners[2], corners[1], x2, y1);
+        seg(corners[2], corners[3], x2, y2); seg(corners[0], corners[3], x1, y2);
+      }
+      corners = [x1, y1, x2, y2];
+    }
     // fuyantes vers les coins de l'écran
-    d.push(line(cx - a, cy - a, 0, 0), line(cx + a, cy - a, w, 0), line(cx + a, cy + a, w, h), line(cx - a, cy + a, 0, h));
-    // grand losange
-    var lx = Math.min(s * 2.1, w * 0.46);
-    var ly = s * 1.25;
-    d.push('M' + cx + ' ' + (cy - ly) + 'L' + (cx + lx) + ' ' + cy + 'L' + cx + ' ' + (cy + ly) + 'L' + (cx - lx) + ' ' + cy + 'Z');
+    if (corners) {
+      seg(0, 0, corners[0], corners[1]); seg(W, 0, corners[2], corners[1]);
+      seg(W, H, corners[2], corners[3]); seg(0, H, corners[0], corners[3]);
+    }
+    // un cadre derrière la photo, relié au premier cadre : le couloir continue
+    var zb = 1.25;
+    var bx1 = px(-A * 0.8, zb), bx2 = px(A * 0.8, zb), by1 = py(-A * 0.8, zb), by2 = py(A * 0.8, zb);
+    rect(bx1, by1, bx2, by2);
+    var f = 1 - 0.085;
+    if (f - c > 0.03) {
+      seg(px(-A, f), py(-A, f), bx1, by1); seg(px(A, f), py(-A, f), bx2, by1);
+      seg(px(A, f), py(A, f), bx2, by2); seg(px(-A, f), py(A, f), bx1, by2);
+    }
+    // grand losange, loin derrière
+    var zl = 1.6;
+    var lw = Math.min(base.ch * 1.25, W * 0.46) * zl;
+    var lh = base.ch * 0.78 * zl;
+    d.push('M' + px(0, zl).toFixed(1) + ' ' + py(-lh, zl).toFixed(1) +
+           'L' + px(lw, zl).toFixed(1) + ' ' + py(0, zl).toFixed(1) +
+           'L' + px(0, zl).toFixed(1) + ' ' + py(lh, zl).toFixed(1) +
+           'L' + px(-lw, zl).toFixed(1) + ' ' + py(0, zl).toFixed(1) + 'Z');
 
-    svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
-    svg.innerHTML = '<path d="' + d.join('') + '"/>';
-    card.style.transform = 'translate(' + (tilt.x * 40).toFixed(1) + 'px,' + (tilt.y * 30).toFixed(1) + 'px)';
+    heroPath.setAttribute('d', d.join(''));
+    svg.style.opacity = String(1 - smoothstep(0.55, 1, k));
   }
 
-  // la photo du centre change au survol ou au toucher
-  var cardImgs = card.querySelectorAll('img');
-  var cardIndex = 0;
-  cardImgs[0].classList.add('on');
-  function nextCard() {
-    cardImgs[cardIndex].classList.remove('on');
-    cardIndex = (cardIndex + 1) % cardImgs.length;
-    cardImgs[cardIndex].classList.add('on');
-  }
-  card.addEventListener(finePointer ? 'mouseenter' : 'click', nextCard);
+  // ---------- Grands titres : ils s'élargissent en entrant dans l'écran ----------
 
-  // ---------- Ruban : mots et photos suivent le défilement ----------
+  var giants = Array.prototype.slice.call(document.querySelectorAll('.giant'));
+  var stretch = [];
 
-  var ribbon = document.querySelector('.ribbon');
-  var track = document.querySelector('.track');
-  var words = track.querySelectorAll('a');
-  var morphImgs = document.querySelectorAll('.morph img');
-  var liquid = document.getElementById('liquid-map');
-  var centers = [];
-
-  function measureWords() {
-    centers = Array.prototype.map.call(words, function (a) { return a.offsetLeft + a.offsetWidth / 2; });
-  }
-
-  function updateRibbon() {
-    var r = ribbon.getBoundingClientRect();
-    var total = ribbon.offsetHeight - window.innerHeight;
-    var p = Math.min(1, Math.max(0, -r.top / total));
-    var f = p * (words.length - 1);
-    var i = Math.min(words.length - 2, Math.floor(f));
-    var t = f - i;
-    // on reste un peu sur chaque mot avant de passer au suivant
-    var e = t < 0.35 ? 0 : t > 0.65 ? 1 : (t - 0.35) / 0.3;
-    e = e * e * (3 - 2 * e);
-    var c = centers[i] + (centers[i + 1] - centers[i]) * e;
-    track.style.transform = 'translateX(' + (window.innerWidth / 2 - c).toFixed(1) + 'px)';
-
-    var active = e < 0.5 ? i : i + 1;
-    words.forEach(function (a, k) { a.classList.toggle('on', k === active); });
-    morphImgs.forEach(function (img, k) {
-      img.style.opacity = k === i ? String(1 - e) : k === i + 1 ? String(e) : '0';
+  function fitGiants() {
+    giants.forEach(function (g, i) {
+      var span = g.firstElementChild;
+      g.style.fontSize = '100px';
+      span.style.fontStretch = '125%';
+      var natural = span.getBoundingClientRect().width;
+      var size = Math.min(100 * g.clientWidth / natural, window.innerHeight * 0.32);
+      g.style.fontSize = size.toFixed(1) + 'px';
+      stretch[i] = 125;
     });
-    if (!reduce) liquid.setAttribute('scale', (Math.sin(e * Math.PI) * 90).toFixed(1));
   }
 
-  // ---------- Carrousel de photos en éventail ----------
+  function stretchGiants(y) {
+    giants.forEach(function (g, i) {
+      var t = reduce ? 1 : clamp((geo.H - (geo.giantTops[i] - y)) / (geo.H * 0.55), 0, 1);
+      var e = 1 - Math.pow(1 - t, 3);
+      var s = Math.round((62 + 63 * e) * 4) / 4; // au quart de pour cent près
+      if (s !== stretch[i]) {
+        stretch[i] = s;
+        g.firstElementChild.style.fontStretch = s + '%';
+      }
+    });
+  }
+
+  // ---------- Parcours : les villes défilent sur le côté ----------
+
+  var pin = document.querySelector('.journey-pin');
+  var track = document.querySelector('.journey-track');
+  var progress = document.querySelector('.journey-progress span');
+  var travel = 0;
+  var lastJourney = -1;
+
+  function measureJourney() {
+    if (reduce) return;
+    travel = Math.max(0, track.scrollWidth - window.innerWidth);
+    pin.style.setProperty('--pin', (travel + window.innerHeight) + 'px');
+    lastJourney = -1;
+  }
+
+  function updateJourney(y) {
+    if (reduce) return;
+    var p = clamp((y - geo.pinTop) / geo.pinTotal, 0, 1);
+    if (p === lastJourney) return;
+    lastJourney = p;
+    track.style.transform = 'translate3d(' + (-p * travel).toFixed(1) + 'px,0,0)';
+    progress.style.transform = 'scaleX(' + p.toFixed(4) + ')';
+  }
+
+  // ---------- Photos : carrousel en éventail ----------
 
   var cf = document.querySelector('.cf');
-  var items = cf.querySelectorAll('.cf-item');
-  var dots = document.querySelector('.cf-dots');
+  var items = Array.prototype.slice.call(cf.querySelectorAll('.cf-item'));
+  var cfLines = cf.querySelector('.cf-lines');
+  var countEl = document.querySelector('.cf-count');
   var current = 0;
-
-  items.forEach(function (item, k) {
-    var b = document.createElement('button');
-    b.setAttribute('aria-label', 'Photo ' + (k + 1));
-    b.addEventListener('click', function () { go(k); });
-    dots.appendChild(b);
-    item.addEventListener('click', function () { go(k); });
-  });
+  var n = items.length;
 
   function go(k) {
-    current = (k + items.length) % items.length;
+    current = ((k % n) + n) % n;
     items.forEach(function (item, j) {
-      // distance la plus courte, pour que le carrousel tourne en boucle
-      var n = items.length;
-      var d = ((j - current) % n + n + Math.floor(n / 2)) % n - Math.floor(n / 2);
+      var d = ((j - current) % n + n) % n;
+      if (d > n / 2) d -= n;
       var ad = Math.abs(d);
-      var rot = Math.max(-45, Math.min(45, -d * 32));
-      item.style.transform = 'translateX(' + (d * 58) + '%) translateZ(' + (-ad * 160) + 'px) rotateY(' + rot + 'deg)';
-      item.style.opacity = ad > 3 ? '0' : String(1 - ad * 0.18);
+      item.style.transform = 'translateX(' + (d * 60) + '%) translateZ(' + (-ad * 170) + 'px) rotateY(' + clamp(-d * 34, -50, 50) + 'deg)';
+      item.style.opacity = ad > 3 ? '0' : ad === 3 ? '0.55' : '1';
+      item.style.filter = ad ? 'brightness(' + (1 - Math.min(ad, 3) * 0.2).toFixed(2) + ')' : 'none';
       item.style.zIndex = String(100 - ad);
-      item.style.filter = ad ? 'brightness(' + (1 - ad * 0.22) + ')' : 'none';
       item.style.pointerEvents = ad > 3 ? 'none' : 'auto';
       item.classList.toggle('on', d === 0);
-      dots.children[j].classList.toggle('on', d === 0);
+      item.setAttribute('aria-hidden', d === 0 ? 'false' : 'true');
     });
+    countEl.innerHTML = '<b>' + String(current + 1).padStart(2, '0') + '</b> / ' + String(n).padStart(2, '0');
   }
 
+  // le même dessin qu'en couverture : la photo du centre au bout d'un couloir
+  function drawCfLines() {
+    var W = cf.clientWidth;
+    var pw = items[0].offsetWidth;
+    var ph = items[0].offsetHeight;
+    var x1 = W / 2 - pw / 2 - 16, x2 = W / 2 + pw / 2 + 16;
+    var y1 = -16, y2 = ph + 16;
+    var top = -ph * 0.25, bottom = ph * 1.25;
+    var d = 'M' + x1 + ' ' + y1 + 'H' + x2 + 'V' + y2 + 'H' + x1 + 'Z' +
+      'M0 ' + top + 'L' + x1 + ' ' + y1 + 'M' + W + ' ' + top + 'L' + x2 + ' ' + y1 +
+      'M' + W + ' ' + bottom + 'L' + x2 + ' ' + y2 + 'M0 ' + bottom + 'L' + x1 + ' ' + y2 +
+      'M0 ' + ph / 2 + 'H' + x1 + 'M' + x2 + ' ' + ph / 2 + 'H' + W;
+    cfLines.style.top = top + 'px';
+    cfLines.style.height = (bottom - top) + 'px';
+    cfLines.setAttribute('viewBox', '0 ' + top + ' ' + W + ' ' + (bottom - top));
+    cfLines.innerHTML = '<path d="' + d + '"/>';
+  }
+
+  items.forEach(function (item, k) {
+    item.addEventListener('click', function () { go(k); });
+  });
   document.querySelector('.cf-prev').addEventListener('click', function () { go(current - 1); });
   document.querySelector('.cf-next').addEventListener('click', function () { go(current + 1); });
   cf.addEventListener('keydown', function (e) {
-    if (e.key === 'ArrowLeft') go(current - 1);
-    if (e.key === 'ArrowRight') go(current + 1);
+    if (e.key === 'ArrowLeft') { e.preventDefault(); go(current - 1); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); go(current + 1); }
   });
-
-  // glisser du doigt ou à la souris
   var startX = null;
   cf.addEventListener('pointerdown', function (e) { startX = e.clientX; });
   window.addEventListener('pointerup', function (e) {
@@ -152,59 +312,95 @@
     startX = null;
   });
 
-  go(0);
+  // ---------- Contact ----------
 
-  // ---------- Phrase de la couverture : suit la largeur de la fenêtre ----------
+  var mailBox = document.querySelector('.mail-box');
+  var mail = mailBox.querySelector('.mail');
+  var mailLines = mailBox.querySelector('.mail-lines');
 
-  var steps = [
-    [0, '1 serveur. Ça suffit tant que personne ne vient.'],
-    [560, 'un serveur web et une base de données à part.'],
-    [720, '2 serveurs derrière un répartiteur de charge.'],
-    [880, '3 serveurs.'],
-    [1040, '4 serveurs et une réplique de la base.'],
-    [1200, '4 serveurs, une réplique et un CDN.'],
-    [1360, '4 serveurs, un CDN et de la supervision.'],
-    [1520, '6 serveurs, en auto-scaling.']
-  ];
-  var vw = document.getElementById('vw');
-  var scaleText = document.getElementById('scale-text');
+  function drawMail() {
+    var b = mailBox.getBoundingClientRect();
+    var m = mail.getBoundingClientRect();
+    var W = b.width, H = b.height;
+    var x1 = m.left - b.left, y1 = m.top - b.top, x2 = x1 + m.width, y2 = y1 + m.height;
+    var d = 'M' + x1 + ' ' + y1 + 'H' + x2 + 'V' + y2 + 'H' + x1 + 'Z' +
+      'M0 0L' + x1 + ' ' + y1 + 'M' + W + ' 0L' + x2 + ' ' + y1 +
+      'M' + W + ' ' + H + 'L' + x2 + ' ' + y2 + 'M0 ' + H + 'L' + x1 + ' ' + y2 +
+      'M0 ' + H / 2 + 'H' + x1 + 'M' + x2 + ' ' + H / 2 + 'H' + W;
+    mailLines.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    mailLines.innerHTML = '<path d="' + d + '"/>';
+  }
 
-  function updateScale() {
-    var w = window.innerWidth;
-    var text = steps[0][1];
-    steps.forEach(function (s) { if (w >= s[0]) text = s[1]; });
-    vw.textContent = w.toLocaleString('fr-FR');
-    scaleText.textContent = text;
+  var copy = document.querySelector('.copy');
+  if (navigator.clipboard && window.isSecureContext) {
+    copy.hidden = false;
+    copy.addEventListener('click', function () {
+      navigator.clipboard.writeText('igor.belyaev1899@gmail.com').then(function () {
+        copy.textContent = 'Adresse copiée';
+        setTimeout(function () { copy.textContent = "Copier l'adresse"; }, 2000);
+      });
+    });
   }
 
   // ---------- Boucle d'animation ----------
+  // Elle ne tourne que pendant un mouvement (souris, défilement), puis s'arrête.
 
-  function frame() {
-    var k = reduce ? 1 : 0.12;
-    dotPos.x += (mouse.x - dotPos.x) * (reduce ? 1 : 0.25);
-    dotPos.y += (mouse.y - dotPos.y) * (reduce ? 1 : 0.25);
-    dot.style.transform = 'translate(' + dotPos.x.toFixed(1) + 'px,' + dotPos.y.toFixed(1) + 'px)';
+  var running = false;
+  var until = 0;
 
-    var tx = tilt.x + (mouse.nx - tilt.x) * k;
-    var ty = tilt.y + (mouse.ny - tilt.y) * k;
-    if (Math.abs(tx - tilt.x) > 0.0005 || Math.abs(ty - tilt.y) > 0.0005) {
-      tilt.x = tx;
-      tilt.y = ty;
-      drawLines();
+  function kick() {
+    until = performance.now() + 1000;
+    if (!running) {
+      running = true;
+      requestAnimationFrame(frame);
     }
-    requestAnimationFrame(frame);
   }
 
-  function onResize() {
-    measureWords();
-    drawLines();
-    updateRibbon();
-    updateScale();
+  function frame(now) {
+    var a = reduce ? 1 : 0.1;
+    soft.nx += (mouse.nx - soft.nx) * a;
+    soft.ny += (mouse.ny - soft.ny) * a;
+    soft.x += (mouse.x - soft.x) * (reduce ? 1 : 0.25);
+    soft.y += (mouse.y - soft.y) * (reduce ? 1 : 0.25);
+    dot.style.transform = 'translate(' + soft.x.toFixed(1) + 'px,' + soft.y.toFixed(1) + 'px)';
+
+    var y = window.scrollY;
+    if (y < geo.heroBottom) drawHero(y);
+    stretchGiants(y);
+    updateJourney(y);
+
+    var settled = Math.abs(mouse.nx - soft.nx) < 0.0005 && Math.abs(mouse.ny - soft.ny) < 0.0005 &&
+                  Math.abs(mouse.x - soft.x) < 0.5 && Math.abs(mouse.y - soft.y) < 0.5;
+    if (now < until || !settled) requestAnimationFrame(frame);
+    else running = false;
   }
 
-  window.addEventListener('resize', onResize);
-  window.addEventListener('scroll', updateRibbon, { passive: true });
-  document.fonts && document.fonts.ready.then(onResize);
-  onResize();
-  requestAnimationFrame(frame);
+  function layout() {
+    measureHero();
+    fitGiants();
+    measureJourney();
+    drawCfLines();
+    drawMail();
+
+    geo.W = stage.clientWidth;
+    geo.H = stage.clientHeight;
+    geo.heroTop = docTop(hero);
+    geo.heroTotal = Math.max(1, hero.offsetHeight - stage.offsetHeight);
+    geo.heroBottom = geo.heroTop + hero.offsetHeight;
+    geo.pinTop = docTop(pin);
+    geo.pinTotal = Math.max(1, pin.offsetHeight - window.innerHeight);
+    geo.giantTops = giants.map(docTop);
+    svg.setAttribute('viewBox', '0 0 ' + geo.W + ' ' + geo.H);
+    lastHero = '';
+    lastJourney = -1;
+    kick();
+  }
+
+  window.addEventListener('scroll', kick, { passive: true });
+  window.addEventListener('resize', layout);
+  if (document.fonts) document.fonts.ready.then(layout);
+  window.addEventListener('load', layout);
+
+  go(0);
+  layout();
 })();
