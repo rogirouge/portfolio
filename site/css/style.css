@@ -587,3 +587,8 @@ html:not(.js) .cf-lines, html:not(.js) .cf-bar { display: none; }
   .js .stop { width: auto; }
   .js .journey-progress { display: none; }
 }
+
+/* ---------- Page 404 ---------- */
+
+.not-found .giant { font-size: 30vw; }
+.not-found .back { margin-top: 40px; }
