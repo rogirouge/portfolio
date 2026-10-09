@@ -17,14 +17,14 @@ concurrency:
 jobs:
   build:
     name: Build, test, push
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
     outputs:
       image: ${{ steps.vars.outputs.image }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Stamp version
         # la page affiche le commit et la date de la version publiée
@@ -36,12 +36,12 @@ jobs:
         run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
       # le VPS Oracle Always Free est en ARM : on construit aussi pour arm64
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v4
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Build image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true
@@ -70,7 +70,7 @@ jobs:
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -78,7 +78,7 @@ jobs:
 
       - name: Push image
         if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -94,7 +94,7 @@ jobs:
     name: Publish to GitHub Pages
     needs: build
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pages: write
@@ -103,36 +103,36 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Stamp version
         run: .github/stamp-version.sh
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
       - name: Deploy
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   deploy:
     name: Deploy to VPS
     needs: build
     # ignoré tant que la variable VPS_HOST n'est pas configurée dans le dépôt
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.VPS_HOST != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: production
     permissions:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Copy compose files
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ vars.VPS_HOST }}
           username: ${{ vars.VPS_USER }}
@@ -142,7 +142,7 @@ jobs:
           strip_components: 1
 
       - name: Pull and restart containers
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         env:
           IMAGE: ${{ needs.build.outputs.image }}:${{ github.sha }}
           SITE_ADDRESS: ${{ vars.SITE_ADDRESS || ':80' }}
