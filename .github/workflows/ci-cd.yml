@@ -30,6 +30,9 @@ jobs:
         # la page affiche le commit et la date de la version publiée
         run: .github/stamp-version.sh
 
+      - name: Validate HTML
+        run: npx --yes html-validate@11.16.2 site/*.html
+
       - name: Image name
         id: vars
         # ghcr.io exige un nom en minuscules
