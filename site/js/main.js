@@ -294,8 +294,13 @@
     cfLines.innerHTML = '<path d="' + d + '"/>';
   }
 
+  // après un glissement à la souris, le navigateur envoie aussi un clic : on l'ignore
+  var swiped = false;
   items.forEach(function (item, k) {
-    item.addEventListener('click', function () { go(k); });
+    item.addEventListener('click', function () {
+      if (swiped) { swiped = false; return; }
+      go(k);
+    });
   });
   document.querySelector('.cf-prev').addEventListener('click', function () { go(current - 1); });
   document.querySelector('.cf-next').addEventListener('click', function () { go(current + 1); });
@@ -304,11 +309,12 @@
     if (e.key === 'ArrowRight') { e.preventDefault(); go(current + 1); }
   });
   var startX = null;
-  cf.addEventListener('pointerdown', function (e) { startX = e.clientX; });
+  cf.addEventListener('pointerdown', function (e) { startX = e.clientX; swiped = false; });
   window.addEventListener('pointerup', function (e) {
     if (startX === null) return;
     var dx = e.clientX - startX;
-    if (Math.abs(dx) > 40) go(current + (dx < 0 ? 1 : -1));
+    swiped = Math.abs(dx) > 40;
+    if (swiped) go(current + (dx < 0 ? 1 : -1));
     startX = null;
   });
 
