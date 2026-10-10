@@ -112,6 +112,11 @@ jobs:
         run: .github/stamp-version.sh
 
       - uses: actions/configure-pages@v6
+        id: pages
+
+      - name: Base path for the 404 page
+        # le site est servi sous /portfolio/ (vide avec un domaine personnalisé)
+        run: sed -i 's|<base href="/">|<base href="${{ steps.pages.outputs.base_path }}/">|' site/404.html
 
       - uses: actions/upload-pages-artifact@v5
         with:
