@@ -62,9 +62,9 @@
     var lift = soft.ny * 5;
     var a = 57 + tilt + lift, d = 81 + tilt + lift;
     var b = 17 - tilt + lift, c = 41 - tilt + lift;
-    // en défilant, la bande s'élargit jusqu'à couvrir l'écran
-    a = lerp(a, -12, e); b = lerp(b, -12, e);
-    d = lerp(d, 112, e); c = lerp(c, 112, e);
+    // en défilant, la bande remonte et sort par le haut de l'écran
+    var up = lerp(0, -95, e);
+    a += up; b += up; c += up; d += up;
     var key = [a, b, c, d].map(function (v) { return v.toFixed(2); }).join(' ');
     if (key === lastBand) return;
     lastBand = key;
@@ -88,9 +88,7 @@
   function updateBar(y) {
     var probe = y + 30;
     var red = false;
-    if (probe < geo.heroBottom) {
-      red = clamp((y - geo.heroTop) / geo.heroTotal, 0, 1) > 0.6;
-    } else {
+    if (probe >= geo.heroBottom) {
       for (var i = 0; i < geo.zones.length; i++) {
         if (probe >= geo.zones[i][0] && probe < geo.zones[i][1]) { red = geo.zones[i][2]; break; }
       }
