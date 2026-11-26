@@ -52,8 +52,7 @@
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setMenu(false); });
 
   // ---------- Couverture : le couloir ----------
-  // Un couloir de cadres carrés mène à la photo. Il y a autant de cadres que de « serveurs » :
-  // plus la fenêtre est large, plus il y en a. En faisant défiler, la caméra avance dans le couloir,
+  // Un couloir de cadres carrés mène à la photo : plus la fenêtre est large, plus il y a de cadres. En faisant défiler, la caméra avance dans le couloir,
   // les cadres passent de chaque côté et la photo s'ouvre jusqu'à remplir l'écran.
 
   var hero = document.querySelector('.hero');
@@ -65,14 +64,14 @@
   var role = hero.querySelector('.hero-role');
   var fading = hero.querySelectorAll('.hero-role, .hero-corner');
   var base = { cw: 0, ch: 0, gap: 0 };
-  var servers = 1;
+  var frames = 1;
   var C_END = 0.9; // jusqu'où avance la caméra (la photo est à la profondeur 1)
   var lastHero = '';
 
   svg.innerHTML = '<path/>';
   var heroPath = svg.firstChild;
 
-  function serverCount(w) {
+  function frameCount(w) {
     return w < 640 ? 1 : w < 900 ? 2 : w < 1150 ? 3 : w < 1400 ? 4 : w < 1700 ? 5 : 6;
   }
 
@@ -92,9 +91,7 @@
       : window.innerWidth / 2 - base.cw / 2 - base.gap - gutter();
     root.style.setProperty('--name', clamp(96 * avail / probe, 28, 150).toFixed(1) + 'px');
 
-    servers = serverCount(window.innerWidth);
-    document.getElementById('vw').textContent = window.innerWidth.toLocaleString('fr-FR');
-    document.getElementById('servers').textContent = servers + (servers > 1 ? ' serveurs' : ' serveur');
+    frames = frameCount(window.innerWidth);
     lastHero = '';
   }
 
@@ -158,7 +155,7 @@
     // les cadres du couloir, du plus proche de la photo au plus proche de nous
     var A = base.ch * 0.4 * 0.935;
     var corners = null;
-    for (var j = 0; j < servers; j++) {
+    for (var j = 0; j < frames; j++) {
       var z = 1 - 0.085 * (j + 1);
       if (z - c < 0.03) break;
       var x1 = px(-A, z), x2 = px(A, z), y1 = py(-A, z), y2 = py(A, z);

@@ -2,8 +2,8 @@
 
 [Версия на русском](README.ru.md)
 
-Site personnel d'un étudiant en troisième année d'informatique (Université de Lille × USTH, Hanoï)
-qui se prépare à un master orienté cloud et DevOps.
+Site personnel d'un étudiant en troisième année d'informatique (Université de Lille × USTH, Hanoï) :
+projets, parcours, compétences et photos.
 
 Le site sert aussi de terrain d'entraînement : il est écrit à la main (HTML, CSS et JavaScript, sans framework
 ni étape de build), empaqueté dans une image Docker et publié automatiquement à chaque `git push`.
@@ -26,6 +26,7 @@ Dependabot propose chaque semaine les nouvelles versions des actions utilisées 
 ## Organisation du dépôt
 
 - `site/` : le site (`index.html`, `404.html`, `css/`, `js/`, `img/`).
+- `site/cv/` : le CV en PDF, version sans numéro de téléphone.
 - `nginx/default.conf` : cache, gzip, en-têtes de sécurité (dont la CSP), `/healthz`, page 404.
 - `Dockerfile` : image basée sur `nginxinc/nginx-unprivileged`, nginx ne tourne pas en root.
 - `deploy/` : `docker-compose.yml` et `Caddyfile` pour le serveur ; Caddy gère le HTTPS.
@@ -70,4 +71,5 @@ docker compose up -d
 
 ## Crédits
 
-Photos : Wikimedia Commons ; les auteurs et les licences sont indiqués en bas de la page.
+Photos : Igor Belyaev, Hanoï, octobre 2026. Le diagramme de composants et le graphique des modèles viennent
+des projets d'équipe à l'USTH présentés sur la page.

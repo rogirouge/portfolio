@@ -49,7 +49,7 @@ h1, h2, h3, p, figure, dl, dd { margin: 0; }
 code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .86em; }
 
 /* petits libellés en capitales */
-.label, .bar, .hero-corner, .hero-role, .stop-years, .pipeline li, .arrow, .copy, .menu-foot, .cf-count {
+.label, .bar, .hero-corner, .hero-role, .stop-years, .arrow, .copy, .menu-foot, .cf-count {
   font-size: 13px;
   font-weight: 600;
   line-height: 1.45;
@@ -351,7 +351,6 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .86em; 
   position: relative;
   padding-bottom: .08em;
   border-bottom: 1px solid var(--line);
-  /* « MASTER », le mot le plus long, tient dans une étape avec de la marge */
   font-size: clamp(56px, 12.5vw, 200px);
   font-weight: 800;
   font-stretch: 125%;
@@ -379,10 +378,6 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .86em; 
 }
 .stop-where { margin-top: 8px; font-size: 16px; color: var(--muted); }
 
-/* la suite n'est pas encore écrite : la ville est en contour */
-.stop-next .stop-city { color: transparent; -webkit-text-stroke: 1.5px var(--fg); }
-@supports not (-webkit-text-stroke: 1px #000) { .stop-next .stop-city { color: var(--fg); } }
-
 .journey-progress { display: none; }
 .js .journey-progress {
   display: block;
@@ -399,9 +394,10 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .86em; 
 
 .skills {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: clamp(28px, 4vw, 64px);
 }
+@media (max-width: 1100px) { .skills { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 56px; } }
 .skill-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--rule); }
 .skill-list li {
   padding: 12px 0;
@@ -414,29 +410,33 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .86em; 
 }
 .skill-list small { display: block; margin-top: 4px; font-size: 15px; font-weight: 400; font-stretch: 100%; color: var(--muted); }
 
-/* ---------- Projet ---------- */
+/* ---------- Projets ---------- */
 
-.pipeline {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  row-gap: 10px;
-  margin: 34px 0 22px;
-  padding: 18px 0;
-  border-top: 1px solid var(--rule);
+.project {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: clamp(32px, 6vw, 110px);
+  align-items: start;
+  padding: clamp(40px, 5vw, 72px) 0;
   border-bottom: 1px solid var(--rule);
-  list-style: none;
 }
-.pipeline li { display: flex; align-items: center; color: var(--fg); }
-.pipeline li + li::before {
-  content: "";
-  width: clamp(18px, 3vw, 44px);
-  height: 1px;
-  margin: 0 12px;
-  background: var(--line);
+.project:first-of-type { padding-top: 0; }
+.project:last-of-type { border-bottom: 0; }
+.project-title {
+  margin-bottom: 14px;
+  font-size: clamp(28px, 3vw, 46px);
+  font-weight: 700;
+  font-stretch: 112%;
+  line-height: 1.08;
+  letter-spacing: -.01em;
+  color: var(--fg);
 }
-.pipeline .soon { color: var(--muted); }
-.pipeline small { margin-left: 6px; font-size: 13px; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.project-team { font-size: 16px; color: var(--muted); }
+.project .body p { margin-bottom: 1em; }
+.stack { margin: 26px 0 0; padding-top: 16px; border-top: 1px solid var(--rule); color: var(--fg); }
+.project-figure { margin-top: 30px; }
+.project-figure img { display: block; width: 100%; height: auto; }
+.project-figure figcaption { margin-top: 10px; font-size: 14px; color: var(--muted); }
 .version { margin-bottom: 26px; font-size: 15px; color: var(--muted); }
 
 /* ---------- Photos : carrousel en éventail ---------- */
@@ -541,7 +541,6 @@ html:not(.js) .cf-lines, html:not(.js) .cf-bar { display: none; }
   font-size: 14px;
   color: var(--muted);
 }
-.credits { max-width: 110ch; margin-top: 8px; font-size: 13px; }
 .footer a { color: var(--text); }
 
 /* ---------- Écrans étroits ---------- */
@@ -567,7 +566,8 @@ html:not(.js) .cf-lines, html:not(.js) .cf-bar { display: none; }
     white-space: normal;
   }
 
-  .grid, .skills { grid-template-columns: 1fr; }
+  .grid, .skills, .project { grid-template-columns: 1fr; }
+  .project { gap: 20px; }
   .facts div { grid-template-columns: 1fr; gap: 4px; }
   .js .stop { width: 84vw; }
   .stop-city { font-size: 13.5vw; }
