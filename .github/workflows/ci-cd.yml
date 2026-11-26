@@ -100,6 +100,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+      actions: read
       pages: write
       id-token: write
     environment:
@@ -121,6 +122,20 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site
+
+      - name: Wait for the artifact
+        # l'API met parfois quelques secondes à voir l'artefact qu'on vient d'envoyer ;
+        # sans cette attente, deploy-pages échoue avec « No artifacts named github-pages »
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 30); do
+            gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" \
+              --jq '.artifacts[].name' | grep -qx github-pages && exit 0
+            sleep 2
+          done
+          echo "artefact github-pages introuvable" >&2
+          exit 1
 
       - name: Deploy
         id: deployment
