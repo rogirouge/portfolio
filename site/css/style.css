@@ -1,5 +1,5 @@
-/* Rouge : une affiche en noir, le rouge sert d'accent
-   (bande de la couverture, titres verticaux, dates, adresse). */
+/* Rouge : une affiche en noir et blanc. Le rouge n'apparaît que sur la bande de la couverture
+   et au survol (menu, compétences, adresse). */
 
 :root {
   --black: #0b0b0b;
@@ -233,7 +233,7 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; 
   line-height: .8;
   white-space: nowrap;
 }
-.dark .side { color: var(--red); }
+.dark .side { color: var(--white); }
 
 .content { max-width: 1180px; min-width: 0; }
 
@@ -298,14 +298,15 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; 
   padding: 34px 0 60px;
   border-top: 2px solid var(--white);
 }
-.step-years { color: var(--red); }
+.step-years { color: var(--grey); }
 .step-city { margin: 14px 0 22px; font-size: clamp(72px, 10vw, 170px); }
 .step-what { max-width: 30ch; font-size: 22px; font-weight: 600; line-height: 1.3; }
 .step-where { margin-top: 6px; color: var(--grey); }
 .step-photo { display: none; }
 
 /* la vue d'aujourd'hui et la suite */
-.step.on .step-city { color: var(--red); }
+.step-city { color: #4d4d4d; transition: color .4s; }
+.step.on .step-city { color: var(--white); }
 .step-next .step-city { color: transparent; -webkit-text-stroke: 2px var(--white); }
 .step-next.on .step-city { color: transparent; -webkit-text-stroke-color: var(--red); }
 @supports not (-webkit-text-stroke: 1px #000) { .step-next .step-city { color: var(--grey); } }
@@ -427,7 +428,7 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; 
   padding-top: 18px;
   border-top: 2px solid var(--white);
 }
-.cf-count b { color: var(--red); }
+.cf-count b { color: var(--white); }
 .cf-nav { display: flex; gap: 10px; }
 .cf-nav button, .copy {
   padding: 10px 16px;
@@ -449,11 +450,11 @@ html:not(.js) .cf-bar { display: none; }
 .mail {
   margin: clamp(36px, 5vw, 64px) 0 30px;
   font-size: 8vw;             /* ajusté à la largeur par main.js */
-  color: var(--red);
+  color: var(--white);
   overflow-wrap: anywhere;
 }
 .mail a { text-decoration: none; }
-.mail a:hover { color: var(--white); }
+.mail a:hover { color: var(--red); }
 .contact-links { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 26px; }
 .copy:hover { background: var(--white); color: var(--black); }
 
@@ -461,7 +462,7 @@ html:not(.js) .cf-bar { display: none; }
 
 .footer {
   padding: 26px var(--gutter) 40px;
-  border-top: 2px solid var(--red);
+  border-top: 1px solid #262626;
   font-size: 14px;
   color: var(--grey);
 }
@@ -478,7 +479,7 @@ html:not(.js) .cf-bar { display: none; }
   min-height: 100svh;
   padding: 90px var(--gutter);
 }
-.not-found .name { position: static; font-size: min(42vw, 62svh); color: var(--red); }
+.not-found .name { position: static; font-size: min(42vw, 62svh); }
 
 /* ---------- Écrans étroits ---------- */
 
